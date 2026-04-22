@@ -21,28 +21,138 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function cleanupCell(node, tagName) {
+function cleanupCell(node, tagName, attrs = "") {
   const clone = node.cloneNode(true);
   clone.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
 
   let content = clone.textContent ?? "";
   content = content.replace(/\u00a0/g, " ").replace(/\r\n/g, "\n").trim();
 
-  return `<${tagName}>${escapeHtml(content).replaceAll("\n", "<br />")}</${tagName}>`;
+  return `<${tagName}${attrs}>${escapeHtml(content).replaceAll("\n", "<br />")}</${tagName}>`;
+}
+
+function isTransparent(color) {
+  return color === "rgba(0, 0, 0, 0)" || color === "transparent";
+}
+
+function shouldKeepColor(color) {
+  return color && color !== "rgb(0, 0, 0)" && color !== "canvastext";
+}
+
+function buildStyleString(styleMap) {
+  const entries = Object.entries(styleMap).filter(([, value]) => value);
+
+  if (!entries.length) {
+    return "";
+  }
+
+  return entries.map(([key, value]) => `${key}:${value}`).join(";");
+}
+
+function readCellStyle(cell) {
+  const computed = window.getComputedStyle(cell);
+  const styleMap = {};
+
+  ["top", "right", "bottom", "left"].forEach((side) => {
+    const width = computed.getPropertyValue(`border-${side}-width`);
+    const borderStyle = computed.getPropertyValue(`border-${side}-style`);
+    const color = computed.getPropertyValue(`border-${side}-color`);
+
+    if (width !== "0px" && borderStyle !== "none") {
+      styleMap[`border-${side}`] = `${width} ${borderStyle} ${color}`;
+    }
+  });
+
+  if (!isTransparent(computed.backgroundColor)) {
+    styleMap["background-color"] = computed.backgroundColor;
+  }
+
+  if (shouldKeepColor(computed.color)) {
+    styleMap.color = computed.color;
+  }
+
+  if (computed.fontWeight && computed.fontWeight !== "400") {
+    styleMap["font-weight"] = computed.fontWeight;
+  }
+
+  if (computed.fontStyle && computed.fontStyle !== "normal") {
+    styleMap["font-style"] = computed.fontStyle;
+  }
+
+  if (computed.textAlign && computed.textAlign !== "start") {
+    styleMap["text-align"] = computed.textAlign;
+  }
+
+  if (computed.verticalAlign && computed.verticalAlign !== "baseline") {
+    styleMap["vertical-align"] = computed.verticalAlign;
+  }
+
+  if (computed.whiteSpace && computed.whiteSpace !== "normal") {
+    styleMap["white-space"] = computed.whiteSpace;
+  }
+
+  ["top", "right", "bottom", "left"].forEach((side) => {
+    const value = computed.getPropertyValue(`padding-${side}`);
+
+    if (value && value !== "0px") {
+      styleMap[`padding-${side}`] = value;
+    }
+  });
+
+  if (computed.width && computed.width !== "auto" && computed.width !== "0px") {
+    styleMap.width = computed.width;
+  }
+
+  if (computed.height && computed.height !== "auto" && computed.height !== "0px") {
+    styleMap.height = computed.height;
+  }
+
+  return buildStyleString(styleMap);
+}
+
+function readTableStyle(table) {
+  const computed = window.getComputedStyle(table);
+  const styleMap = {
+    "border-collapse": computed.borderCollapse || "collapse",
+  };
+
+  if (computed.borderSpacing && computed.borderSpacing !== "0px") {
+    styleMap["border-spacing"] = computed.borderSpacing;
+  }
+
+  if (computed.width && computed.width !== "auto" && computed.width !== "0px") {
+    styleMap.width = computed.width;
+  }
+
+  return buildStyleString(styleMap);
+}
+
+function createMeasurementRoot(rawHtml) {
+  const root = document.createElement("div");
+  root.style.position = "fixed";
+  root.style.left = "-99999px";
+  root.style.top = "0";
+  root.style.visibility = "hidden";
+  root.style.pointerEvents = "none";
+  root.style.background = "white";
+  root.innerHTML = rawHtml;
+  document.body.append(root);
+  return root;
 }
 
 function normalizeHtmlTable(rawHtml) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(rawHtml, "text/html");
-  const sourceTable = doc.querySelector("table");
+  const measurementRoot = createMeasurementRoot(rawHtml);
+  const sourceTable = measurementRoot.querySelector("table");
 
   if (!sourceTable) {
+    measurementRoot.remove();
     return "";
   }
 
   const rows = [...sourceTable.querySelectorAll("tr")];
 
   if (!rows.length) {
+    measurementRoot.remove();
     return "";
   }
 
@@ -57,18 +167,23 @@ function normalizeHtmlTable(rawHtml) {
       const normalizedCells = cells
         .map((cell) => {
           const tagName = cell.tagName.toLowerCase() === "th" ? "th" : "td";
-          const spanAttrs = [];
+          const attrs = [];
 
           if (cell.colSpan > 1) {
-            spanAttrs.push(` colspan="${cell.colSpan}"`);
+            attrs.push(` colspan="${cell.colSpan}"`);
           }
 
           if (cell.rowSpan > 1) {
-            spanAttrs.push(` rowspan="${cell.rowSpan}"`);
+            attrs.push(` rowspan="${cell.rowSpan}"`);
           }
 
-          const normalizedCell = cleanupCell(cell, tagName);
-          return normalizedCell.replace(`<${tagName}>`, `<${tagName}${spanAttrs.join("")}>`);
+          const styleText = readCellStyle(cell);
+
+          if (styleText) {
+            attrs.push(` style="${escapeHtml(styleText)}"`);
+          }
+
+          return cleanupCell(cell, tagName, attrs.join(""));
         })
         .join("");
 
@@ -77,7 +192,20 @@ function normalizeHtmlTable(rawHtml) {
     .filter(Boolean)
     .join("");
 
-  return `<table>${normalizedRows}</table>`;
+  const tableStyle = readTableStyle(sourceTable);
+  measurementRoot.remove();
+
+  const tableAttrs = [
+    'border="1"',
+    'cellpadding="0"',
+    'cellspacing="0"',
+  ];
+
+  if (tableStyle) {
+    tableAttrs.push(` style="${escapeHtml(tableStyle)}"`);
+  }
+
+  return `<table ${tableAttrs.join(" ")}>${normalizedRows}</table>`;
 }
 
 function normalizePlainTextTable(rawText) {
