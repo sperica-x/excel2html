@@ -189,6 +189,43 @@ button:disabled {
   line-height: 1.7;
 }
 
+.credit-panel {
+  margin-top: 20px;
+  background:
+    linear-gradient(135deg, rgba(199, 93, 44, 0.08), rgba(255, 255, 255, 0.9)),
+    #fffaf4;
+}
+
+.credit-kicker {
+  margin: 0 0 10px;
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.credit-panel h2 {
+  font-size: clamp(1.25rem, 2.2vw, 1.8rem);
+  line-height: 1.25;
+}
+
+.credit-body {
+  margin: 14px 0 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.credit-body a {
+  color: var(--accent-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.credit-body a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 860px) {
   .page {
     width: min(100% - 20px, 1180px);
