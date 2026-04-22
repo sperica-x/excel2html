@@ -10,15 +10,11 @@ const totalVisitorsNode = document.querySelector("#totalVisitors");
 
 let lastTableHtml = "";
 let heartbeatTimer = null;
-let onlineCountRegistered = false;
-
-const COUNTER_NAMESPACE = "board-insight-n-com";
-const COUNTER_KEYS = {
-  online: "online-users",
-  total: "total-users",
-};
-const SESSION_KEY = "board-insight-n-visitor-marked";
+let statsSessionId = "";
+let statsVisitorId = "";
 const HEARTBEAT_MS = 45000;
+const VISITOR_STORAGE_KEY = "board-insight-n-visitor-id";
+const SESSION_STORAGE_KEY = "board-insight-n-session-id";
 
 function setStatus(message, isError = false) {
   statusNode.textContent = message;
@@ -340,62 +336,57 @@ function formatCount(value) {
   return new Intl.NumberFormat("ko-KR").format(Math.max(0, value));
 }
 
-async function fetchCounter(path) {
-  const response = await fetch(`https://api.countapi.xyz${path}`, {
-    method: "GET",
-    mode: "cors",
+function getOrCreateStorageValue(storage, key) {
+  const existing = storage.getItem(key);
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = crypto.randomUUID();
+  storage.setItem(key, created);
+  return created;
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
     cache: "no-store",
-    keepalive: true,
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
   });
 
   if (!response.ok) {
-    throw new Error(`Counter request failed: ${response.status}`);
+    throw new Error(`Request failed: ${response.status}`);
   }
 
   return response.json();
 }
 
-async function refreshOnlineCount() {
-  const result = await fetchCounter(`/get/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}`);
-  liveVisitorsNode.textContent = formatCount(result.value ?? 0);
+function renderStats(stats) {
+  liveVisitorsNode.textContent = formatCount(stats.liveVisitors ?? 0);
+  totalVisitorsNode.textContent = formatCount(stats.totalVisitors ?? 0);
 }
 
-async function refreshTotalCount() {
-  const result = await fetchCounter(`/get/${COUNTER_NAMESPACE}/${COUNTER_KEYS.total}`);
-  totalVisitorsNode.textContent = formatCount(result.value ?? 0);
+async function refreshStats() {
+  const stats = await fetchJson("/api/stats/summary");
+  renderStats(stats);
 }
 
-async function incrementTotalIfNeeded() {
-  if (window.localStorage.getItem(SESSION_KEY) === "1") {
-    await refreshTotalCount();
-    return;
-  }
+async function sendHeartbeat() {
+  const stats = await fetchJson("/api/stats/session", {
+    method: "POST",
+    body: JSON.stringify({
+      visitorId: statsVisitorId,
+      sessionId: statsSessionId,
+      pathname: window.location.pathname,
+      referrer: document.referrer || "",
+    }),
+  });
 
-  const result = await fetchCounter(`/hit/${COUNTER_NAMESPACE}/${COUNTER_KEYS.total}`);
-  window.localStorage.setItem(SESSION_KEY, "1");
-  totalVisitorsNode.textContent = formatCount(result.value ?? 0);
-}
-
-async function registerOnlinePresence() {
-  if (onlineCountRegistered) {
-    return;
-  }
-
-  const result = await fetchCounter(`/hit/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}`);
-  onlineCountRegistered = true;
-  liveVisitorsNode.textContent = formatCount(result.value ?? 0);
-}
-
-async function unregisterOnlinePresence() {
-  if (!onlineCountRegistered) {
-    return;
-  }
-
-  try {
-    await fetchCounter(`/update/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}?amount=-1`);
-  } catch (error) {
-    // Ignore unload failures; the next refresh will self-correct partially.
-  }
+  renderStats(stats);
 }
 
 function startHeartbeat() {
@@ -404,7 +395,7 @@ function startHeartbeat() {
   }
 
   heartbeatTimer = window.setInterval(() => {
-    refreshOnlineCount().catch(() => {
+    sendHeartbeat().catch(() => {
       liveVisitorsNode.textContent = "-";
     });
   }, HEARTBEAT_MS);
@@ -412,28 +403,20 @@ function startHeartbeat() {
 
 async function initializeStats() {
   try {
-    await Promise.all([incrementTotalIfNeeded(), registerOnlinePresence()]);
+    statsVisitorId = getOrCreateStorageValue(window.localStorage, VISITOR_STORAGE_KEY);
+    statsSessionId = getOrCreateStorageValue(window.sessionStorage, SESSION_STORAGE_KEY);
+    await sendHeartbeat();
     startHeartbeat();
-    await refreshOnlineCount();
+    await refreshStats();
   } catch (error) {
     liveVisitorsNode.textContent = "-";
     totalVisitorsNode.textContent = "-";
   }
 }
 
-window.addEventListener("beforeunload", () => {
-  if (!onlineCountRegistered) {
-    return;
-  }
-
-  navigator.sendBeacon(
-    `https://api.countapi.xyz/update/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}?amount=-1`,
-  );
-});
-
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    refreshOnlineCount().catch(() => {
+    sendHeartbeat().catch(() => {
       liveVisitorsNode.textContent = "-";
     });
   }

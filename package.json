@@ -1,0 +1,7 @@
+{
+  "name": "excel2html",
+  "private": true,
+  "dependencies": {
+    "@vercel/blob": "^2.3.3"
+  }
+}
