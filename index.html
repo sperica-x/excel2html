@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excel to HTML Table</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Excel Clipboard Converter</p>
+        <h1>엑셀 표를 HTML 테이블 코드로 변환</h1>
+        <p class="intro">
+          엑셀에서 복사한 내용을 아래에 붙여넣으면 브라우저가 클립보드의
+          HTML이나 탭 구분 텍스트를 읽어 CKEditor HTML 모드에 넣기 쉬운
+          테이블 코드로 정리합니다.
+        </p>
+      </section>
+
+      <section class="panel">
+        <label class="label" for="pasteZone">붙여넣기 영역</label>
+        <div id="pasteZone" class="paste-zone" contenteditable="true" spellcheck="false">
+          여기에 Ctrl+V로 엑셀 표를 붙여넣으세요.
+        </div>
+        <div class="actions">
+          <button id="convertButton" type="button">붙여넣은 내용으로 변환</button>
+          <button id="copyButton" type="button" disabled>HTML 코드 복사</button>
+          <button id="clearButton" type="button">초기화</button>
+        </div>
+        <p id="status" class="status" aria-live="polite">
+          엑셀에서 셀 범위를 복사한 뒤 여기에 붙여넣으세요.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <div class="section-head">
+            <h2>미리보기</h2>
+          </div>
+          <div id="preview" class="preview empty">변환 결과가 여기에 표시됩니다.</div>
+        </article>
+
+        <article class="panel">
+          <div class="section-head">
+            <h2>HTML 코드</h2>
+          </div>
+          <textarea
+            id="htmlOutput"
+            class="code-output"
+            readonly
+            placeholder="<table>...</table>"
+          ></textarea>
+        </article>
+      </section>
+
+      <section class="panel notes">
+        <h2>사용 흐름</h2>
+        <ol>
+          <li>엑셀에서 표 범위를 복사합니다.</li>
+          <li>이 페이지에 붙여넣고 HTML 코드를 복사합니다.</li>
+          <li>CKEditor 4.5.1에서 HTML 모드로 전환합니다.</li>
+          <li>복사한 테이블 HTML을 붙여넣고 일반 모드로 돌아갑니다.</li>
+        </ol>
+      </section>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
