@@ -37,6 +37,50 @@ body {
   margin-bottom: 24px;
 }
 
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  padding: 18px 20px;
+  border: 1px solid rgba(6, 79, 53, 0.16);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(0, 241, 142, 0.12), rgba(248, 255, 252, 0.94)),
+    var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.stat-label,
+.stat-note {
+  display: block;
+}
+
+.stat-label {
+  color: var(--accent-deep);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.stat-note {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .eyebrow {
   margin: 0 0 10px;
   color: var(--accent-deep);
@@ -234,6 +278,10 @@ button:disabled {
   .page {
     width: min(100% - 20px, 1180px);
     padding-top: 24px;
+  }
+
+  .stats-strip {
+    grid-template-columns: 1fr;
   }
 
   .grid {

@@ -5,8 +5,20 @@ const clearButton = document.querySelector("#clearButton");
 const htmlOutput = document.querySelector("#htmlOutput");
 const preview = document.querySelector("#preview");
 const statusNode = document.querySelector("#status");
+const liveVisitorsNode = document.querySelector("#liveVisitors");
+const totalVisitorsNode = document.querySelector("#totalVisitors");
 
 let lastTableHtml = "";
+let heartbeatTimer = null;
+let onlineCountRegistered = false;
+
+const COUNTER_NAMESPACE = "board-insight-n-com";
+const COUNTER_KEYS = {
+  online: "online-users",
+  total: "total-users",
+};
+const SESSION_KEY = "board-insight-n-visitor-marked";
+const HEARTBEAT_MS = 45000;
 
 function setStatus(message, isError = false) {
   statusNode.textContent = message;
@@ -320,4 +332,112 @@ clearButton.addEventListener("click", () => {
   resetOutput("초기화했습니다. 새로 붙여넣으세요.");
 });
 
+function formatCount(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("ko-KR").format(Math.max(0, value));
+}
+
+async function fetchCounter(path) {
+  const response = await fetch(`https://api.countapi.xyz${path}`, {
+    method: "GET",
+    mode: "cors",
+    cache: "no-store",
+    keepalive: true,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Counter request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function refreshOnlineCount() {
+  const result = await fetchCounter(`/get/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}`);
+  liveVisitorsNode.textContent = formatCount(result.value ?? 0);
+}
+
+async function refreshTotalCount() {
+  const result = await fetchCounter(`/get/${COUNTER_NAMESPACE}/${COUNTER_KEYS.total}`);
+  totalVisitorsNode.textContent = formatCount(result.value ?? 0);
+}
+
+async function incrementTotalIfNeeded() {
+  if (window.localStorage.getItem(SESSION_KEY) === "1") {
+    await refreshTotalCount();
+    return;
+  }
+
+  const result = await fetchCounter(`/hit/${COUNTER_NAMESPACE}/${COUNTER_KEYS.total}`);
+  window.localStorage.setItem(SESSION_KEY, "1");
+  totalVisitorsNode.textContent = formatCount(result.value ?? 0);
+}
+
+async function registerOnlinePresence() {
+  if (onlineCountRegistered) {
+    return;
+  }
+
+  const result = await fetchCounter(`/hit/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}`);
+  onlineCountRegistered = true;
+  liveVisitorsNode.textContent = formatCount(result.value ?? 0);
+}
+
+async function unregisterOnlinePresence() {
+  if (!onlineCountRegistered) {
+    return;
+  }
+
+  try {
+    await fetchCounter(`/update/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}?amount=-1`);
+  } catch (error) {
+    // Ignore unload failures; the next refresh will self-correct partially.
+  }
+}
+
+function startHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+  }
+
+  heartbeatTimer = window.setInterval(() => {
+    refreshOnlineCount().catch(() => {
+      liveVisitorsNode.textContent = "-";
+    });
+  }, HEARTBEAT_MS);
+}
+
+async function initializeStats() {
+  try {
+    await Promise.all([incrementTotalIfNeeded(), registerOnlinePresence()]);
+    startHeartbeat();
+    await refreshOnlineCount();
+  } catch (error) {
+    liveVisitorsNode.textContent = "-";
+    totalVisitorsNode.textContent = "-";
+  }
+}
+
+window.addEventListener("beforeunload", () => {
+  if (!onlineCountRegistered) {
+    return;
+  }
+
+  navigator.sendBeacon(
+    `https://api.countapi.xyz/update/${COUNTER_NAMESPACE}/${COUNTER_KEYS.online}?amount=-1`,
+  );
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    refreshOnlineCount().catch(() => {
+      liveVisitorsNode.textContent = "-";
+    });
+  }
+});
+
 resetOutput("엑셀에서 셀 범위를 복사한 뒤 여기에 붙여넣으세요.");
+initializeStats();
