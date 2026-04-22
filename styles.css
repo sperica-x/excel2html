@@ -1,13 +1,15 @@
 :root {
   color-scheme: light;
-  --bg: #f4efe6;
-  --paper: rgba(255, 251, 245, 0.92);
-  --ink: #1b1b18;
-  --muted: #5a564f;
-  --line: rgba(70, 55, 40, 0.18);
-  --accent: #c75d2c;
-  --accent-strong: #a84518;
-  --shadow: 0 20px 50px rgba(73, 52, 28, 0.12);
+  --bg: #ebfff7;
+  --paper: rgba(248, 255, 252, 0.92);
+  --ink: #062a1d;
+  --muted: #45695c;
+  --line: rgba(6, 79, 53, 0.14);
+  --accent: #00f18e;
+  --accent-strong: #00bd6f;
+  --accent-deep: #006a45;
+  --surface: #f8fffc;
+  --shadow: 0 22px 60px rgba(0, 97, 61, 0.12);
   --radius: 24px;
 }
 
@@ -20,8 +22,9 @@ body {
   font-family: "Segoe UI", "Apple SD Gothic Neo", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(199, 93, 44, 0.2), transparent 32%),
-    linear-gradient(180deg, #f8f2e9 0%, #efe6d8 100%);
+    radial-gradient(circle at top left, rgba(0, 241, 142, 0.3), transparent 28%),
+    radial-gradient(circle at top right, rgba(0, 106, 69, 0.12), transparent 22%),
+    linear-gradient(180deg, #f4fff9 0%, #dcfff0 100%);
 }
 
 .page {
@@ -36,7 +39,7 @@ body {
 
 .eyebrow {
   margin: 0 0 10px;
-  color: var(--accent-strong);
+  color: var(--accent-deep);
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -87,9 +90,9 @@ h1 {
 .preview {
   width: 100%;
   min-height: 240px;
-  border: 1px solid rgba(70, 55, 40, 0.22);
+  border: 1px solid rgba(6, 79, 53, 0.18);
   border-radius: 18px;
-  background: #fffdfa;
+  background: var(--surface);
 }
 
 .paste-zone {
@@ -100,8 +103,8 @@ h1 {
 }
 
 .paste-zone:focus {
-  border-color: rgba(167, 69, 24, 0.55);
-  box-shadow: 0 0 0 4px rgba(199, 93, 44, 0.12);
+  border-color: rgba(0, 189, 111, 0.7);
+  box-shadow: 0 0 0 4px rgba(0, 241, 142, 0.16);
 }
 
 .actions {
@@ -115,11 +118,12 @@ button {
   appearance: none;
   border: none;
   border-radius: 999px;
-  background: var(--accent);
-  color: white;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #043222;
   padding: 12px 18px;
   font: inherit;
   font-weight: 700;
+  box-shadow: 0 12px 24px rgba(0, 189, 111, 0.18);
   cursor: pointer;
   transition:
     transform 140ms ease,
@@ -128,7 +132,7 @@ button {
 }
 
 button:hover {
-  background: var(--accent-strong);
+  background: linear-gradient(135deg, #14f7a0, #00c877);
   transform: translateY(-1px);
 }
 
@@ -168,7 +172,7 @@ button:disabled {
 
 .preview th,
 .preview td {
-  border: 1px solid #9e978f;
+  border: 1px solid rgba(0, 106, 69, 0.28);
   padding: 8px 10px;
   vertical-align: top;
 }
@@ -192,13 +196,13 @@ button:disabled {
 .credit-panel {
   margin-top: 20px;
   background:
-    linear-gradient(135deg, rgba(199, 93, 44, 0.08), rgba(255, 255, 255, 0.9)),
-    #fffaf4;
+    linear-gradient(135deg, rgba(0, 241, 142, 0.12), rgba(255, 255, 255, 0.9)),
+    #f6fff9;
 }
 
 .credit-kicker {
   margin: 0 0 10px;
-  color: var(--accent-strong);
+  color: var(--accent-deep);
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -217,7 +221,7 @@ button:disabled {
 }
 
 .credit-body a {
-  color: var(--accent-strong);
+  color: var(--accent-deep);
   font-weight: 700;
   text-decoration: none;
 }
