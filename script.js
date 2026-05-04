@@ -557,6 +557,8 @@ function makeEditorReady(recordHistory = false) {
 
   preview.querySelectorAll("table").forEach((table) => {
     table.style.borderCollapse = table.style.borderCollapse || "collapse";
+    table.style.minWidth = "auto";
+    table.style.width = table.style.width || "auto";
     table.querySelectorAll(".resize-handle, .row-resize-handle").forEach((handle) => handle.remove());
 
     const firstRow = table.rows[0];
@@ -780,15 +782,21 @@ function splitSelectedCell() {
 }
 
 function setColumnWidth(table, columnIndex, width) {
+  const normalizedWidth = Math.max(24, Math.round(width));
+
   [...table.rows].forEach((row) => {
     const cell = row.cells[columnIndex];
 
     if (cell) {
-      cell.style.width = `${Math.max(42, Math.round(width))}px`;
-      cell.style.minWidth = `${Math.max(42, Math.round(width))}px`;
+      cell.style.width = `${normalizedWidth}px`;
+      cell.style.minWidth = "0";
+      cell.style.maxWidth = `${normalizedWidth}px`;
+      cell.style.overflowWrap = "break-word";
     }
   });
 
+  table.style.width = "auto";
+  table.style.minWidth = "auto";
   syncHtmlOutput();
 }
 
@@ -1083,7 +1091,10 @@ applyBorderButton.addEventListener("click", () => {
   const color = borderColorInput.value || "#222222";
 
   applyToTargets((target) => {
-    target.style.border = `${width} solid ${color}`;
+    target.style.setProperty("border", `${width} solid ${color}`, "important");
+    target.style.setProperty("border-width", width, "important");
+    target.style.setProperty("border-style", "solid", "important");
+    target.style.setProperty("border-color", color, "important");
   });
 });
 
