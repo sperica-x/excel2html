@@ -7,14 +7,72 @@ const preview = document.querySelector("#preview");
 const statusNode = document.querySelector("#status");
 const liveVisitorsNode = document.querySelector("#liveVisitors");
 const totalVisitorsNode = document.querySelector("#totalVisitors");
+const undoButton = document.querySelector("#undoButton");
+const redoButton = document.querySelector("#redoButton");
+const addParagraphButton = document.querySelector("#addParagraphButton");
+const fontFamilySelect = document.querySelector("#fontFamilySelect");
+const fontSizeSelect = document.querySelector("#fontSizeSelect");
+const boldButton = document.querySelector("#boldButton");
+const italicButton = document.querySelector("#italicButton");
+const underlineButton = document.querySelector("#underlineButton");
+const alignLeftButton = document.querySelector("#alignLeftButton");
+const alignCenterButton = document.querySelector("#alignCenterButton");
+const alignRightButton = document.querySelector("#alignRightButton");
+const lineHeightSelect = document.querySelector("#lineHeightSelect");
+const backgroundColorInput = document.querySelector("#backgroundColorInput");
+const textColorInput = document.querySelector("#textColorInput");
+const borderColorInput = document.querySelector("#borderColorInput");
+const borderWidthSelect = document.querySelector("#borderWidthSelect");
+const applyBorderButton = document.querySelector("#applyBorderButton");
+const clearFormatButton = document.querySelector("#clearFormatButton");
+const addRowButton = document.querySelector("#addRowButton");
+const deleteRowButton = document.querySelector("#deleteRowButton");
+const addColumnButton = document.querySelector("#addColumnButton");
+const deleteColumnButton = document.querySelector("#deleteColumnButton");
+const mergeCellsButton = document.querySelector("#mergeCellsButton");
+const splitCellButton = document.querySelector("#splitCellButton");
 
 let lastTableHtml = "";
+let selectedCells = [];
+let selectionAnchor = null;
+let isSelectingCells = false;
+let resizeState = null;
+let historyStack = [];
+let historyIndex = -1;
+let isRestoringHistory = false;
+let pasteBlocks = [];
 let heartbeatTimer = null;
 let statsSessionId = "";
 let statsVisitorId = "";
 const HEARTBEAT_MS = 45000;
 const VISITOR_STORAGE_KEY = "board-insight-n-visitor-id";
 const SESSION_STORAGE_KEY = "board-insight-n-session-id";
+const EDITOR_BUTTONS = [
+  undoButton,
+  redoButton,
+  addParagraphButton,
+  fontFamilySelect,
+  fontSizeSelect,
+  boldButton,
+  italicButton,
+  underlineButton,
+  alignLeftButton,
+  alignCenterButton,
+  alignRightButton,
+  lineHeightSelect,
+  backgroundColorInput,
+  textColorInput,
+  borderColorInput,
+  borderWidthSelect,
+  applyBorderButton,
+  clearFormatButton,
+  addRowButton,
+  deleteRowButton,
+  addColumnButton,
+  deleteColumnButton,
+  mergeCellsButton,
+  splitCellButton,
+];
 
 function setStatus(message, isError = false) {
   statusNode.textContent = message;
@@ -150,70 +208,75 @@ function createMeasurementRoot(rawHtml) {
 
 function normalizeHtmlTable(rawHtml) {
   const measurementRoot = createMeasurementRoot(rawHtml);
-  const sourceTable = measurementRoot.querySelector("table");
+  const sourceTables = [...measurementRoot.querySelectorAll("table")];
 
-  if (!sourceTable) {
+  if (!sourceTables.length) {
     measurementRoot.remove();
     return "";
   }
 
-  const rows = [...sourceTable.querySelectorAll("tr")];
+  const tables = sourceTables
+    .map((sourceTable) => {
+      const rows = [...sourceTable.querySelectorAll("tr")];
 
-  if (!rows.length) {
-    measurementRoot.remove();
-    return "";
-  }
-
-  const normalizedRows = rows
-    .map((row) => {
-      const cells = [...row.children].filter((cell) => /^(TD|TH)$/i.test(cell.tagName));
-
-      if (!cells.length) {
+      if (!rows.length) {
         return "";
       }
 
-      const normalizedCells = cells
-        .map((cell) => {
-          const tagName = cell.tagName.toLowerCase() === "th" ? "th" : "td";
-          const attrs = [];
+      const normalizedRows = rows
+        .map((row) => {
+          const cells = [...row.children].filter((cell) => /^(TD|TH)$/i.test(cell.tagName));
 
-          if (cell.colSpan > 1) {
-            attrs.push(` colspan="${cell.colSpan}"`);
+          if (!cells.length) {
+            return "";
           }
 
-          if (cell.rowSpan > 1) {
-            attrs.push(` rowspan="${cell.rowSpan}"`);
-          }
+          const normalizedCells = cells
+            .map((cell) => {
+              const tagName = cell.tagName.toLowerCase() === "th" ? "th" : "td";
+              const attrs = [];
 
-          const styleText = readCellStyle(cell);
+              if (cell.colSpan > 1) {
+                attrs.push(` colspan="${cell.colSpan}"`);
+              }
 
-          if (styleText) {
-            attrs.push(` style="${escapeHtml(styleText)}"`);
-          }
+              if (cell.rowSpan > 1) {
+                attrs.push(` rowspan="${cell.rowSpan}"`);
+              }
 
-          return cleanupCell(cell, tagName, attrs.join(""));
+              const styleText = readCellStyle(cell);
+
+              if (styleText) {
+                attrs.push(` style="${escapeHtml(styleText)}"`);
+              }
+
+              return cleanupCell(cell, tagName, attrs.join(""));
+            })
+            .join("");
+
+          return `<tr>${normalizedCells}</tr>`;
         })
+        .filter(Boolean)
         .join("");
 
-      return `<tr>${normalizedCells}</tr>`;
-    })
-    .filter(Boolean)
-    .join("");
+      const tableStyle = readTableStyle(sourceTable);
+      const tableAttrs = [
+        'border="1"',
+        'cellpadding="0"',
+        'cellspacing="0"',
+      ];
 
-  const tableStyle = readTableStyle(sourceTable);
+      if (tableStyle) {
+        tableAttrs.push(` style="${escapeHtml(tableStyle)}"`);
+      }
+
+      return `<table ${tableAttrs.join(" ")}>${normalizedRows}</table>`;
+    })
+    .filter(Boolean);
+
   measurementRoot.remove();
 
-  const tableAttrs = [
-    'border="1"',
-    'cellpadding="0"',
-    'cellspacing="0"',
-  ];
-
-  if (tableStyle) {
-    tableAttrs.push(` style="${escapeHtml(tableStyle)}"`);
-  }
-
-  return `<table ${tableAttrs.join(" ")}>${normalizedRows}</table>`;
+  return tables.join("<p><br /></p>");
 }
 
 function normalizePlainTextTable(rawText) {
@@ -239,12 +302,74 @@ function normalizePlainTextTable(rawText) {
   return `<table>${tableRows}</table>`;
 }
 
-function readPastedTable() {
-  const explicitHtml = pasteZone.dataset.excelHtml || "";
-  const explicitText = pasteZone.dataset.plainText || "";
+function normalizePlainTextParagraphs(rawText) {
+  const paragraphs = rawText
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
 
-  if (explicitHtml) {
-    return normalizeHtmlTable(explicitHtml);
+  if (!paragraphs.length) {
+    return "";
+  }
+
+  return paragraphs
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br />")}</p>`)
+    .join("");
+}
+
+function normalizePlainText(rawText) {
+  return rawText.includes("\t")
+    ? normalizePlainTextTable(rawText)
+    : normalizePlainTextParagraphs(rawText);
+}
+
+function resetPasteZoneIfPlaceholder() {
+  if (!pasteBlocks.length) {
+    pasteZone.innerHTML = "";
+  }
+}
+
+function renderPasteBlocks() {
+  if (!pasteBlocks.length) {
+    pasteZone.innerHTML = "여기에 Ctrl+V로 엑셀 표를 붙여넣으세요.";
+    return;
+  }
+
+  pasteZone.innerHTML = pasteBlocks
+    .map((block, index) => {
+      const label = block.kind === "html"
+        ? "엑셀 HTML"
+        : block.text.includes("\t")
+          ? "탭 구분 표"
+          : "일반 텍스트";
+      const content = block.kind === "html"
+        ? block.html
+        : `<pre>${escapeHtml(block.text)}</pre>`;
+
+      return `<section class="paste-block" data-index="${index}"><p class="paste-block-label">${index + 1}. ${label}</p>${content}</section>`;
+    })
+    .join("");
+}
+
+function addPasteBlock(block) {
+  resetPasteZoneIfPlaceholder();
+  pasteBlocks.push(block);
+  renderPasteBlocks();
+}
+
+function buildDocumentFromPasteBlocks() {
+  if (pasteBlocks.length) {
+    return pasteBlocks
+      .map((block) => {
+        if (block.kind === "html") {
+          return normalizeHtmlTable(block.html);
+        }
+
+        return normalizePlainText(block.text);
+      })
+      .filter(Boolean)
+      .join("<p><br /></p>");
   }
 
   const liveHtml = pasteZone.innerHTML;
@@ -254,16 +379,447 @@ function readPastedTable() {
     return normalizeHtmlTable(liveHtml);
   }
 
-  return normalizePlainTextTable(explicitText || liveText);
+  return normalizePlainText(liveText);
+}
+
+function enableEditorControls(enabled) {
+  EDITOR_BUTTONS.forEach((control) => {
+    control.disabled = !enabled;
+  });
+
+  updateHistoryButtons();
+}
+
+function getCellFromTarget(target) {
+  return target.closest?.("td, th") || null;
+}
+
+function clearCellSelection() {
+  selectedCells.forEach((cell) => cell.classList.remove("selected-cell"));
+  selectedCells = [];
+}
+
+function setSelectedCells(cells) {
+  clearCellSelection();
+  selectedCells = cells.filter(Boolean);
+  selectedCells.forEach((cell) => cell.classList.add("selected-cell"));
+  mergeCellsButton.disabled = selectedCells.length < 2;
+}
+
+function getCellPosition(cell) {
+  return {
+    rowIndex: cell.parentElement.rowIndex,
+    cellIndex: cell.cellIndex,
+  };
+}
+
+function selectCellRange(fromCell, toCell) {
+  const table = fromCell.closest("table");
+
+  if (!table || table !== toCell.closest("table")) {
+    setSelectedCells([toCell]);
+    return;
+  }
+
+  const from = getCellPosition(fromCell);
+  const to = getCellPosition(toCell);
+  const minRow = Math.min(from.rowIndex, to.rowIndex);
+  const maxRow = Math.max(from.rowIndex, to.rowIndex);
+  const minCell = Math.min(from.cellIndex, to.cellIndex);
+  const maxCell = Math.max(from.cellIndex, to.cellIndex);
+  const cells = [];
+
+  for (let rowIndex = minRow; rowIndex <= maxRow; rowIndex += 1) {
+    const row = table.rows[rowIndex];
+
+    for (let cellIndex = minCell; cellIndex <= maxCell; cellIndex += 1) {
+      if (row?.cells[cellIndex]) {
+        cells.push(row.cells[cellIndex]);
+      }
+    }
+  }
+
+  setSelectedCells(cells);
+}
+
+function getActiveEditable() {
+  return document.activeElement?.closest?.("#preview td, #preview th, #preview p") || null;
+}
+
+function getPrimaryCell() {
+  const activeCell = document.activeElement?.closest?.("#preview td, #preview th");
+  return selectedCells[0] || activeCell || preview.querySelector("td, th");
+}
+
+function getTargetsForFormatting() {
+  const active = getActiveEditable();
+
+  if (selectedCells.length) {
+    return selectedCells;
+  }
+
+  return active ? [active] : [];
+}
+
+function cleanEditorHtml() {
+  const clone = preview.cloneNode(true);
+
+  clone.querySelectorAll(".resize-handle, .row-resize-handle").forEach((node) => node.remove());
+  clone.querySelectorAll(".selected-cell").forEach((node) => {
+    node.classList.remove("selected-cell");
+  });
+  clone.querySelectorAll("[contenteditable]").forEach((node) => {
+    node.removeAttribute("contenteditable");
+  });
+  clone.querySelectorAll("[data-editor-ready]").forEach((node) => {
+    node.removeAttribute("data-editor-ready");
+  });
+  clone.querySelectorAll("td, th").forEach((cell) => {
+    cell.classList.remove("selected-cell");
+
+    if (!cell.getAttribute("class")) {
+      cell.removeAttribute("class");
+    }
+  });
+
+  return clone.innerHTML.trim();
+}
+
+function updateHistoryButtons() {
+  if (preview.classList.contains("empty")) {
+    undoButton.disabled = true;
+    redoButton.disabled = true;
+    return;
+  }
+
+  undoButton.disabled = historyIndex <= 0;
+  redoButton.disabled = historyIndex < 0 || historyIndex >= historyStack.length - 1;
+}
+
+function captureHistory() {
+  if (isRestoringHistory || preview.classList.contains("empty")) {
+    return;
+  }
+
+  const snapshot = cleanEditorHtml();
+
+  if (historyStack[historyIndex] === snapshot) {
+    updateHistoryButtons();
+    return;
+  }
+
+  historyStack = historyStack.slice(0, historyIndex + 1);
+  historyStack.push(snapshot);
+
+  if (historyStack.length > 50) {
+    historyStack.shift();
+  }
+
+  historyIndex = historyStack.length - 1;
+  updateHistoryButtons();
+}
+
+function restoreHistory(index) {
+  if (index < 0 || index >= historyStack.length) {
+    return;
+  }
+
+  isRestoringHistory = true;
+  historyIndex = index;
+  preview.innerHTML = historyStack[historyIndex];
+  preview.classList.remove("empty");
+  clearCellSelection();
+  makeEditorReady(false);
+  syncHtmlOutput();
+  isRestoringHistory = false;
+  updateHistoryButtons();
+}
+
+function syncHtmlOutput() {
+  if (preview.classList.contains("empty")) {
+    lastTableHtml = "";
+    htmlOutput.value = "";
+    return;
+  }
+
+  lastTableHtml = cleanEditorHtml();
+  htmlOutput.value = lastTableHtml;
+}
+
+function makeEditorReady(recordHistory = false) {
+  preview.querySelectorAll("td, th").forEach((cell) => {
+    cell.contentEditable = "true";
+  });
+
+  preview.querySelectorAll("p").forEach((paragraph) => {
+    paragraph.contentEditable = "true";
+  });
+
+  preview.querySelectorAll("table").forEach((table) => {
+    table.style.borderCollapse = table.style.borderCollapse || "collapse";
+    table.querySelectorAll(".resize-handle, .row-resize-handle").forEach((handle) => handle.remove());
+
+    const firstRow = table.rows[0];
+
+    if (!firstRow) {
+      return;
+    }
+
+    [...firstRow.cells].forEach((cell) => {
+      const handle = document.createElement("span");
+      handle.className = "resize-handle";
+      handle.contentEditable = "false";
+      cell.append(handle);
+    });
+
+    [...table.rows].forEach((row) => {
+      const firstCell = row.cells[0];
+
+      if (!firstCell) {
+        return;
+      }
+
+      const handle = document.createElement("span");
+      handle.className = "row-resize-handle";
+      handle.contentEditable = "false";
+      firstCell.append(handle);
+    });
+  });
+
+  enableEditorControls(true);
+  syncHtmlOutput();
+
+  if (recordHistory) {
+    captureHistory();
+  }
+}
+
+function applyToTargets(callback) {
+  const targets = getTargetsForFormatting();
+
+  targets.forEach(callback);
+  syncHtmlOutput();
+  captureHistory();
+}
+
+function applyAlignment(value) {
+  applyToTargets((target) => {
+    target.style.textAlign = value;
+  });
+}
+
+function insertParagraph() {
+  const paragraph = document.createElement("p");
+  paragraph.contentEditable = "true";
+  paragraph.textContent = "새 문단";
+
+  const active = getActiveEditable();
+  const activeTable = active?.closest("table");
+  const insertionTarget = activeTable || active;
+
+  if (insertionTarget?.parentNode === preview) {
+    insertionTarget.after(paragraph);
+  } else {
+    preview.append(paragraph);
+  }
+
+  paragraph.focus();
+  syncHtmlOutput();
+  captureHistory();
+}
+
+function cloneRow(row) {
+  const clone = row.cloneNode(true);
+
+  clone.querySelectorAll(".resize-handle").forEach((handle) => handle.remove());
+  [...clone.cells].forEach((cell) => {
+    cell.textContent = "";
+    cell.removeAttribute("rowspan");
+    cell.removeAttribute("colspan");
+    cell.contentEditable = "true";
+  });
+
+  return clone;
+}
+
+function addRowAfterSelection() {
+  const cell = getPrimaryCell();
+  const row = cell?.parentElement;
+
+  if (!row) {
+    return;
+  }
+
+  const newRow = cloneRow(row);
+  row.after(newRow);
+  makeEditorReady();
+  setSelectedCells([...newRow.cells]);
+  captureHistory();
+}
+
+function deleteSelectedRows() {
+  const rows = [...new Set(selectedCells.map((cell) => cell.parentElement))];
+  const targetRows = rows.length ? rows : [getPrimaryCell()?.parentElement].filter(Boolean);
+
+  targetRows.forEach((row) => {
+    const table = row.closest("table");
+
+    if (table.rows.length > 1) {
+      row.remove();
+    }
+  });
+
+  clearCellSelection();
+  makeEditorReady();
+  captureHistory();
+}
+
+function addColumnAfterSelection() {
+  const cell = getPrimaryCell();
+  const table = cell?.closest("table");
+
+  if (!table) {
+    return;
+  }
+
+  const insertAfter = cell.cellIndex;
+
+  [...table.rows].forEach((row) => {
+    const source = row.cells[insertAfter] || row.cells[row.cells.length - 1];
+    const newCell = source.cloneNode(false);
+    newCell.textContent = "";
+    newCell.contentEditable = "true";
+    newCell.removeAttribute("rowspan");
+    newCell.removeAttribute("colspan");
+
+    if (source.nextSibling) {
+      row.insertBefore(newCell, source.nextSibling);
+    } else {
+      row.append(newCell);
+    }
+  });
+
+  makeEditorReady();
+  captureHistory();
+}
+
+function deleteSelectedColumn() {
+  const cell = getPrimaryCell();
+  const table = cell?.closest("table");
+
+  if (!table) {
+    return;
+  }
+
+  const columnIndex = cell.cellIndex;
+
+  [...table.rows].forEach((row) => {
+    if (row.cells.length > 1 && row.cells[columnIndex]) {
+      row.cells[columnIndex].remove();
+    }
+  });
+
+  clearCellSelection();
+  makeEditorReady();
+  captureHistory();
+}
+
+function mergeSelectedCells() {
+  if (selectedCells.length < 2) {
+    return;
+  }
+
+  const table = selectedCells[0].closest("table");
+
+  if (!table || selectedCells.some((cell) => cell.closest("table") !== table)) {
+    return;
+  }
+
+  const positions = selectedCells.map(getCellPosition);
+  const minRow = Math.min(...positions.map((position) => position.rowIndex));
+  const maxRow = Math.max(...positions.map((position) => position.rowIndex));
+  const minCell = Math.min(...positions.map((position) => position.cellIndex));
+  const maxCell = Math.max(...positions.map((position) => position.cellIndex));
+  const master = table.rows[minRow]?.cells[minCell];
+
+  if (!master) {
+    return;
+  }
+
+  const mergedText = selectedCells
+    .map((cell) => cell.innerText.trim())
+    .filter(Boolean)
+    .join("\n");
+
+  selectedCells.forEach((cell) => {
+    if (cell !== master) {
+      cell.remove();
+    }
+  });
+
+  master.rowSpan = maxRow - minRow + 1;
+  master.colSpan = maxCell - minCell + 1;
+  master.textContent = mergedText;
+  makeEditorReady();
+  setSelectedCells([master]);
+  captureHistory();
+}
+
+function splitSelectedCell() {
+  const cell = getPrimaryCell();
+
+  if (!cell) {
+    return;
+  }
+
+  cell.removeAttribute("rowspan");
+  cell.removeAttribute("colspan");
+  makeEditorReady();
+  setSelectedCells([cell]);
+  captureHistory();
+}
+
+function setColumnWidth(table, columnIndex, width) {
+  [...table.rows].forEach((row) => {
+    const cell = row.cells[columnIndex];
+
+    if (cell) {
+      cell.style.width = `${Math.max(42, Math.round(width))}px`;
+      cell.style.minWidth = `${Math.max(42, Math.round(width))}px`;
+    }
+  });
+
+  syncHtmlOutput();
+}
+
+function setRowHeight(row, height) {
+  [...row.cells].forEach((cell) => {
+    cell.style.height = `${Math.max(24, Math.round(height))}px`;
+  });
+
+  syncHtmlOutput();
+}
+
+function clearFormatting() {
+  applyToTargets((target) => {
+    const content = target.innerHTML;
+    target.removeAttribute("style");
+    target.innerHTML = content;
+  });
+}
+
+function readPastedTable() {
+  return buildDocumentFromPasteBlocks();
 }
 
 function renderTable(tableHtml) {
-  lastTableHtml = tableHtml;
-  htmlOutput.value = tableHtml;
   preview.innerHTML = tableHtml;
   preview.classList.remove("empty");
   copyButton.disabled = false;
-  setStatus("HTML 테이블 코드로 변환했습니다.");
+  historyStack = [];
+  historyIndex = -1;
+  makeEditorReady(true);
+  setStatus("문서 편집 영역에서 표를 수정한 뒤 HTML 코드를 복사하세요.");
 }
 
 function resetOutput(message) {
@@ -272,6 +828,11 @@ function resetOutput(message) {
   preview.textContent = "변환 결과가 여기에 표시됩니다.";
   preview.classList.add("empty");
   copyButton.disabled = true;
+  enableEditorControls(false);
+  clearCellSelection();
+  historyStack = [];
+  historyIndex = -1;
+  updateHistoryButtons();
   setStatus(message);
 }
 
@@ -279,20 +840,24 @@ pasteZone.addEventListener("paste", (event) => {
   const html = event.clipboardData?.getData("text/html") ?? "";
   const text = event.clipboardData?.getData("text/plain") ?? "";
 
-  pasteZone.dataset.excelHtml = html;
-  pasteZone.dataset.plainText = text;
-
   if (html) {
     event.preventDefault();
-    pasteZone.innerHTML = html;
-    setStatus("엑셀 HTML 클립보드를 감지했습니다. 변환 버튼을 누르세요.");
+    addPasteBlock({
+      kind: "html",
+      html,
+      text,
+    });
+    setStatus(`붙여넣기 ${pasteBlocks.length}개를 모았습니다. 계속 붙여넣거나 변환하세요.`);
     return;
   }
 
   if (text) {
     event.preventDefault();
-    pasteZone.textContent = text;
-    setStatus("탭 구분 텍스트를 감지했습니다. 변환 버튼을 누르세요.");
+    addPasteBlock({
+      kind: "text",
+      text,
+    });
+    setStatus(`붙여넣기 ${pasteBlocks.length}개를 모았습니다. 계속 붙여넣거나 변환하세요.`);
   }
 });
 
@@ -309,6 +874,8 @@ convertButton.addEventListener("click", () => {
 });
 
 copyButton.addEventListener("click", async () => {
+  syncHtmlOutput();
+
   if (!lastTableHtml) {
     return;
   }
@@ -322,11 +889,212 @@ copyButton.addEventListener("click", async () => {
 });
 
 clearButton.addEventListener("click", () => {
-  pasteZone.innerHTML = "여기에 Ctrl+V로 엑셀 표를 붙여넣으세요.";
-  pasteZone.dataset.excelHtml = "";
-  pasteZone.dataset.plainText = "";
+  pasteBlocks = [];
+  renderPasteBlocks();
   resetOutput("초기화했습니다. 새로 붙여넣으세요.");
 });
+
+preview.addEventListener("mousedown", (event) => {
+  const resizeHandle = event.target.closest(".resize-handle");
+  const rowResizeHandle = event.target.closest(".row-resize-handle");
+
+  if (resizeHandle) {
+    const cell = resizeHandle.closest("td, th");
+    resizeState = {
+      type: "column",
+      table: cell.closest("table"),
+      columnIndex: cell.cellIndex,
+      startX: event.clientX,
+      startWidth: cell.getBoundingClientRect().width,
+    };
+    event.preventDefault();
+    return;
+  }
+
+  if (rowResizeHandle) {
+    const cell = rowResizeHandle.closest("td, th");
+    const row = cell.parentElement;
+    resizeState = {
+      type: "row",
+      row,
+      startY: event.clientY,
+      startHeight: row.getBoundingClientRect().height,
+    };
+    event.preventDefault();
+    return;
+  }
+
+  const cell = getCellFromTarget(event.target);
+
+  if (!cell || !preview.contains(cell)) {
+    return;
+  }
+
+  selectionAnchor = cell;
+  isSelectingCells = true;
+  selectCellRange(selectionAnchor, cell);
+  event.preventDefault();
+});
+
+preview.addEventListener("mouseover", (event) => {
+  if (!isSelectingCells || !selectionAnchor) {
+    return;
+  }
+
+  const cell = getCellFromTarget(event.target);
+
+  if (cell) {
+    selectCellRange(selectionAnchor, cell);
+  }
+});
+
+preview.addEventListener("dblclick", (event) => {
+  const editable = event.target.closest("td, th, p");
+
+  if (editable) {
+    editable.focus();
+  }
+});
+
+preview.addEventListener("input", () => {
+  syncHtmlOutput();
+  captureHistory();
+});
+
+preview.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !event.shiftKey) {
+    event.preventDefault();
+    restoreHistory(historyIndex - 1);
+  }
+
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"))
+  ) {
+    event.preventDefault();
+    restoreHistory(historyIndex + 1);
+  }
+});
+
+document.addEventListener("mouseup", () => {
+  if (isSelectingCells) {
+    isSelectingCells = false;
+
+    if (selectedCells.length === 1) {
+      selectedCells[0].focus();
+    }
+  }
+
+  if (resizeState) {
+    captureHistory();
+    resizeState = null;
+  }
+});
+
+document.addEventListener("mousemove", (event) => {
+  if (!resizeState) {
+    return;
+  }
+
+  if (resizeState.type === "column") {
+    const width = resizeState.startWidth + event.clientX - resizeState.startX;
+    setColumnWidth(resizeState.table, resizeState.columnIndex, width);
+    return;
+  }
+
+  if (resizeState.type === "row") {
+    const height = resizeState.startHeight + event.clientY - resizeState.startY;
+    setRowHeight(resizeState.row, height);
+  }
+});
+
+undoButton.addEventListener("click", () => restoreHistory(historyIndex - 1));
+redoButton.addEventListener("click", () => restoreHistory(historyIndex + 1));
+addParagraphButton.addEventListener("click", insertParagraph);
+
+fontFamilySelect.addEventListener("change", (event) => {
+  if (!event.target.value) {
+    return;
+  }
+
+  applyToTargets((target) => {
+    target.style.fontFamily = event.target.value;
+  });
+});
+
+fontSizeSelect.addEventListener("change", (event) => {
+  if (!event.target.value) {
+    return;
+  }
+
+  applyToTargets((target) => {
+    target.style.fontSize = event.target.value;
+  });
+});
+
+boldButton.addEventListener("click", () => {
+  applyToTargets((target) => {
+    target.style.fontWeight = target.style.fontWeight === "700" ? "" : "700";
+  });
+});
+
+italicButton.addEventListener("click", () => {
+  applyToTargets((target) => {
+    target.style.fontStyle = target.style.fontStyle === "italic" ? "" : "italic";
+  });
+});
+
+underlineButton.addEventListener("click", () => {
+  applyToTargets((target) => {
+    target.style.textDecoration = target.style.textDecoration.includes("underline")
+      ? ""
+      : "underline";
+  });
+});
+
+alignLeftButton.addEventListener("click", () => applyAlignment("left"));
+alignCenterButton.addEventListener("click", () => applyAlignment("center"));
+alignRightButton.addEventListener("click", () => applyAlignment("right"));
+
+lineHeightSelect.addEventListener("change", (event) => {
+  if (!event.target.value) {
+    return;
+  }
+
+  applyToTargets((target) => {
+    target.style.lineHeight = event.target.value;
+  });
+});
+
+backgroundColorInput.addEventListener("input", (event) => {
+  applyToTargets((target) => {
+    target.style.backgroundColor = event.target.value;
+  });
+});
+
+textColorInput.addEventListener("input", (event) => {
+  applyToTargets((target) => {
+    target.style.color = event.target.value;
+  });
+});
+
+applyBorderButton.addEventListener("click", () => {
+  const width = borderWidthSelect.value || "1px";
+  const color = borderColorInput.value || "#222222";
+
+  applyToTargets((target) => {
+    target.style.border = `${width} solid ${color}`;
+  });
+});
+
+clearFormatButton.addEventListener("click", clearFormatting);
+
+addRowButton.addEventListener("click", addRowAfterSelection);
+deleteRowButton.addEventListener("click", deleteSelectedRows);
+addColumnButton.addEventListener("click", addColumnAfterSelection);
+deleteColumnButton.addEventListener("click", deleteSelectedColumn);
+mergeCellsButton.addEventListener("click", mergeSelectedCells);
+splitCellButton.addEventListener("click", splitSelectedCell);
 
 function formatCount(value) {
   if (typeof value !== "number" || Number.isNaN(value)) {

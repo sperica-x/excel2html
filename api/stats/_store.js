@@ -36,32 +36,20 @@ async function listAll(prefix) {
 async function ensureVisitor(visitorId, pathname, referrer) {
   const pathnameKey = `${VISITOR_PREFIX}${visitorId}.json`;
 
-  try {
-    await put(
-      pathnameKey,
-      JSON.stringify({
-        visitorId,
-        firstSeenAt: new Date().toISOString(),
-        firstPathname: pathname,
-        firstReferrer: referrer || "",
-      }),
-      {
-        access: "private",
-        contentType: "application/json",
-      },
-    );
-  } catch (error) {
-    const alreadyExists =
-      error?.statusCode === 409 ||
-      error?.status === 409 ||
-      String(error?.message || "").includes("already exists");
-
-    if (!alreadyExists) {
-      throw error;
-    }
-
-    return false;
-  }
+  await put(
+    pathnameKey,
+    JSON.stringify({
+      visitorId,
+      lastSeenAt: new Date().toISOString(),
+      pathname,
+      referrer: referrer || "",
+    }),
+    {
+      access: "private",
+      allowOverwrite: true,
+      contentType: "application/json",
+    },
+  );
 
   return true;
 }

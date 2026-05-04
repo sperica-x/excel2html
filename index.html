@@ -48,12 +48,76 @@
         </p>
       </section>
 
-      <section class="grid">
+      <section class="editor-shell">
         <article class="panel">
           <div class="section-head">
-            <h2>미리보기</h2>
+            <h2>문서 편집</h2>
           </div>
-          <div id="preview" class="preview empty">변환 결과가 여기에 표시됩니다.</div>
+          <div class="toolbar" aria-label="문서 편집 도구">
+            <button id="undoButton" type="button" disabled>↶ 이전</button>
+            <button id="redoButton" type="button" disabled>↷ 다음</button>
+            <button id="addParagraphButton" type="button" disabled>📝 문단 추가</button>
+            <select id="fontFamilySelect" disabled aria-label="글꼴">
+              <option value="">글꼴</option>
+              <option value="Malgun Gothic, Apple SD Gothic Neo, sans-serif">맑은 고딕</option>
+              <option value="Batang, serif">바탕</option>
+              <option value="Gulim, sans-serif">굴림</option>
+              <option value="Arial, sans-serif">Arial</option>
+              <option value="Times New Roman, serif">Times</option>
+            </select>
+            <select id="fontSizeSelect" disabled aria-label="글자 크기">
+              <option value="">크기</option>
+              <option value="11px">11</option>
+              <option value="12px">12</option>
+              <option value="13px">13</option>
+              <option value="14px">14</option>
+              <option value="16px">16</option>
+              <option value="18px">18</option>
+              <option value="20px">20</option>
+            </select>
+            <button id="boldButton" type="button" disabled>𝐁 굵게</button>
+            <button id="italicButton" type="button" disabled>𝐼 기울임</button>
+            <button id="underlineButton" type="button" disabled>U 밑줄</button>
+            <button id="alignLeftButton" type="button" disabled>☰ 왼쪽</button>
+            <button id="alignCenterButton" type="button" disabled>☷ 가운데</button>
+            <button id="alignRightButton" type="button" disabled>☰ 오른쪽</button>
+            <select id="lineHeightSelect" disabled aria-label="줄간격">
+              <option value="">줄간격</option>
+              <option value="1.2">1.2</option>
+              <option value="1.4">1.4</option>
+              <option value="1.6">1.6</option>
+              <option value="1.8">1.8</option>
+              <option value="2">2.0</option>
+            </select>
+            <label class="color-tool">
+              🎨 배경
+              <input id="backgroundColorInput" type="color" value="#fff8a8" disabled />
+            </label>
+            <label class="color-tool">
+              🖊 글자
+              <input id="textColorInput" type="color" value="#062a1d" disabled />
+            </label>
+            <label class="color-tool">
+              ▦ 테두리
+              <input id="borderColorInput" type="color" value="#222222" disabled />
+            </label>
+            <select id="borderWidthSelect" disabled aria-label="테두리 굵기">
+              <option value="">테두리 굵기</option>
+              <option value="1px">1px</option>
+              <option value="2px">2px</option>
+              <option value="3px">3px</option>
+              <option value="4px">4px</option>
+            </select>
+            <button id="applyBorderButton" type="button" disabled>▦ 테두리 적용</button>
+            <button id="clearFormatButton" type="button" disabled>🧽 서식 지우기</button>
+            <button id="addRowButton" type="button" disabled>➕ 행 추가</button>
+            <button id="deleteRowButton" type="button" disabled>➖ 행 삭제</button>
+            <button id="addColumnButton" type="button" disabled>➕ 열 추가</button>
+            <button id="deleteColumnButton" type="button" disabled>➖ 열 삭제</button>
+            <button id="mergeCellsButton" type="button" disabled>🔗 셀 병합</button>
+            <button id="splitCellButton" type="button" disabled>✂ 셀 나누기</button>
+          </div>
+          <div id="preview" class="preview editor empty">변환 결과가 여기에 표시됩니다.</div>
         </article>
 
         <article class="panel">
