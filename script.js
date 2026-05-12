@@ -35,6 +35,9 @@ const splitCellButton = document.querySelector("#splitCellButton");
 let lastTableHtml = "";
 let selectedCells = [];
 let selectionAnchor = null;
+let selectionAnchorPoint = null;
+let selectionAnchorInfo = null;
+let selectionMode = "range";
 let isSelectingCells = false;
 let resizeState = null;
 let historyStack = [];
@@ -413,6 +416,83 @@ function getCellPosition(cell) {
   };
 }
 
+function buildTableGrid(table) {
+  const grid = [];
+  const cellInfo = new Map();
+
+  [...table.rows].forEach((row, rowIndex) => {
+    grid[rowIndex] = grid[rowIndex] || [];
+    let columnIndex = 0;
+
+    [...row.cells].forEach((cell) => {
+      while (grid[rowIndex][columnIndex]) {
+        columnIndex += 1;
+      }
+
+      const rowSpan = Math.max(1, cell.rowSpan || 1);
+      const colSpan = Math.max(1, cell.colSpan || 1);
+      const info = {
+        rowIndex,
+        columnIndex,
+        rowSpan,
+        colSpan,
+      };
+
+      cellInfo.set(cell, info);
+
+      for (let rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+        const targetRow = rowIndex + rowOffset;
+        grid[targetRow] = grid[targetRow] || [];
+
+        for (let colOffset = 0; colOffset < colSpan; colOffset += 1) {
+          grid[targetRow][columnIndex + colOffset] = cell;
+        }
+      }
+
+      columnIndex += colSpan;
+    });
+  });
+
+  return {
+    grid,
+    cellInfo,
+  };
+}
+
+function uniqueCells(cells) {
+  return [...new Set(cells.filter(Boolean))];
+}
+
+function selectColumnRange(fromCell, toCell) {
+  const table = fromCell.closest("table");
+
+  if (!table || table !== toCell.closest("table")) {
+    setSelectedCells([toCell]);
+    return;
+  }
+
+  const { grid, cellInfo } = buildTableGrid(table);
+  const from = selectionAnchorInfo || cellInfo.get(fromCell);
+  const to = cellInfo.get(toCell);
+
+  if (!from || !to) {
+    setSelectedCells([toCell]);
+    return;
+  }
+
+  const minRow = Math.min(from.rowIndex, to.rowIndex);
+  const maxRow = Math.max(from.rowIndex, to.rowIndex);
+  const columnIndex = from.columnIndex;
+  const cells = [];
+
+  for (let rowIndex = minRow; rowIndex <= maxRow; rowIndex += 1) {
+    const row = grid[rowIndex] || [];
+    cells.push(row[columnIndex]);
+  }
+
+  setSelectedCells(uniqueCells(cells));
+}
+
 function selectCellRange(fromCell, toCell) {
   const table = fromCell.closest("table");
 
@@ -421,25 +501,57 @@ function selectCellRange(fromCell, toCell) {
     return;
   }
 
+  const { grid, cellInfo } = buildTableGrid(table);
   const from = getCellPosition(fromCell);
   const to = getCellPosition(toCell);
-  const minRow = Math.min(from.rowIndex, to.rowIndex);
-  const maxRow = Math.max(from.rowIndex, to.rowIndex);
-  const minCell = Math.min(from.cellIndex, to.cellIndex);
-  const maxCell = Math.max(from.cellIndex, to.cellIndex);
+  const fromInfo = selectionAnchorInfo || cellInfo.get(fromCell);
+  const toInfo = cellInfo.get(toCell);
+
+  if (!fromInfo || !toInfo) {
+    setSelectedCells([toCell]);
+    return;
+  }
+
+  const minRow = Math.min(from.rowIndex, to.rowIndex, fromInfo.rowIndex, toInfo.rowIndex);
+  const maxRow = Math.max(from.rowIndex, to.rowIndex, fromInfo.rowIndex, toInfo.rowIndex);
+  const minCell = Math.min(fromInfo.columnIndex, toInfo.columnIndex);
+  const maxCell = Math.max(
+    fromInfo.columnIndex + fromInfo.colSpan - 1,
+    toInfo.columnIndex + toInfo.colSpan - 1,
+  );
   const cells = [];
 
   for (let rowIndex = minRow; rowIndex <= maxRow; rowIndex += 1) {
-    const row = table.rows[rowIndex];
+    const row = grid[rowIndex] || [];
 
     for (let cellIndex = minCell; cellIndex <= maxCell; cellIndex += 1) {
-      if (row?.cells[cellIndex]) {
-        cells.push(row.cells[cellIndex]);
-      }
+      cells.push(row[cellIndex]);
     }
   }
 
-  setSelectedCells(cells);
+  setSelectedCells(uniqueCells(cells));
+}
+
+function updateDragSelection(cell, event) {
+  if (!selectionAnchor) {
+    return;
+  }
+
+  if (selectionMode === "range" && selectionAnchorPoint) {
+    const deltaX = Math.abs(event.clientX - selectionAnchorPoint.x);
+    const deltaY = Math.abs(event.clientY - selectionAnchorPoint.y);
+
+    if (deltaY > 8 && deltaY > deltaX * 1.4) {
+      selectionMode = "column";
+    }
+  }
+
+  if (selectionMode === "column") {
+    selectColumnRange(selectionAnchor, cell);
+    return;
+  }
+
+  selectCellRange(selectionAnchor, cell);
 }
 
 function getActiveEditable() {
@@ -939,6 +1051,12 @@ preview.addEventListener("mousedown", (event) => {
   }
 
   selectionAnchor = cell;
+  selectionAnchorPoint = {
+    x: event.clientX,
+    y: event.clientY,
+  };
+  selectionAnchorInfo = buildTableGrid(cell.closest("table")).cellInfo.get(cell);
+  selectionMode = "range";
   isSelectingCells = true;
   selectCellRange(selectionAnchor, cell);
   event.preventDefault();
@@ -952,7 +1070,7 @@ preview.addEventListener("mouseover", (event) => {
   const cell = getCellFromTarget(event.target);
 
   if (cell) {
-    selectCellRange(selectionAnchor, cell);
+    updateDragSelection(cell, event);
   }
 });
 
@@ -987,6 +1105,9 @@ preview.addEventListener("keydown", (event) => {
 document.addEventListener("mouseup", () => {
   if (isSelectingCells) {
     isSelectingCells = false;
+    selectionAnchorPoint = null;
+    selectionAnchorInfo = null;
+    selectionMode = "range";
 
     if (selectedCells.length === 1) {
       selectedCells[0].focus();
