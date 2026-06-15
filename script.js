@@ -209,77 +209,166 @@ function createMeasurementRoot(rawHtml) {
   return root;
 }
 
-function normalizeHtmlTable(rawHtml) {
-  const measurementRoot = createMeasurementRoot(rawHtml);
-  const sourceTables = [...measurementRoot.querySelectorAll("table")];
+function normalizeSingleTable(sourceTable) {
+  const rows = [...sourceTable.querySelectorAll("tr")];
 
-  if (!sourceTables.length) {
-    measurementRoot.remove();
+  if (!rows.length) {
     return "";
   }
 
-  const tables = sourceTables
-    .map((sourceTable) => {
-      const rows = [...sourceTable.querySelectorAll("tr")];
+  const normalizedRows = rows
+    .map((row) => {
+      const cells = [...row.children].filter((cell) => /^(TD|TH)$/i.test(cell.tagName));
 
-      if (!rows.length) {
+      if (!cells.length) {
         return "";
       }
 
-      const normalizedRows = rows
-        .map((row) => {
-          const cells = [...row.children].filter((cell) => /^(TD|TH)$/i.test(cell.tagName));
+      const normalizedCells = cells
+        .map((cell) => {
+          const tagName = cell.tagName.toLowerCase() === "th" ? "th" : "td";
+          const attrs = [];
 
-          if (!cells.length) {
-            return "";
+          if (cell.colSpan > 1) {
+            attrs.push(` colspan="${cell.colSpan}"`);
           }
 
-          const normalizedCells = cells
-            .map((cell) => {
-              const tagName = cell.tagName.toLowerCase() === "th" ? "th" : "td";
-              const attrs = [];
+          if (cell.rowSpan > 1) {
+            attrs.push(` rowspan="${cell.rowSpan}"`);
+          }
 
-              if (cell.colSpan > 1) {
-                attrs.push(` colspan="${cell.colSpan}"`);
-              }
+          const styleText = readCellStyle(cell);
 
-              if (cell.rowSpan > 1) {
-                attrs.push(` rowspan="${cell.rowSpan}"`);
-              }
+          if (styleText) {
+            attrs.push(` style="${escapeHtml(styleText)}"`);
+          }
 
-              const styleText = readCellStyle(cell);
-
-              if (styleText) {
-                attrs.push(` style="${escapeHtml(styleText)}"`);
-              }
-
-              return cleanupCell(cell, tagName, attrs.join(""));
-            })
-            .join("");
-
-          return `<tr>${normalizedCells}</tr>`;
+          return cleanupCell(cell, tagName, attrs.join(""));
         })
-        .filter(Boolean)
         .join("");
 
-      const tableStyle = readTableStyle(sourceTable);
-      const tableAttrs = [
-        'border="1"',
-        'cellpadding="0"',
-        'cellspacing="0"',
-      ];
+      return `<tr>${normalizedCells}</tr>`;
+    })
+    .filter(Boolean)
+    .join("");
 
-      if (tableStyle) {
-        tableAttrs.push(` style="${escapeHtml(tableStyle)}"`);
+  if (!normalizedRows) {
+    return "";
+  }
+
+  const tableStyle = readTableStyle(sourceTable);
+  const tableAttrs = [
+    'border="1"',
+    'cellpadding="0"',
+    'cellspacing="0"',
+  ];
+
+  if (tableStyle) {
+    tableAttrs.push(` style="${escapeHtml(tableStyle)}"`);
+  }
+
+  return `<table ${tableAttrs.join(" ")}>${normalizedRows}</table>`;
+}
+
+const BLOCK_LEVEL_TAGS =
+  /^(P|DIV|LI|UL|OL|H[1-6]|TR|TABLE|SECTION|ARTICLE|HEADER|FOOTER|BLOCKQUOTE|PRE|ADDRESS)$/;
+
+// 표가 아닌 노드에서 줄바꿈 구조를 유지한 텍스트를 추출한다.
+function extractTextWithBreaks(node) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return (node.textContent ?? "").replace(/ /g, " ");
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return "";
+  }
+
+  const tag = node.tagName.toUpperCase();
+
+  if (tag === "BR") {
+    return "\n";
+  }
+
+  if (tag === "TABLE") {
+    return "";
+  }
+
+  let text = "";
+  node.childNodes.forEach((child) => {
+    text += extractTextWithBreaks(child);
+  });
+
+  // 블록 요소는 문단 경계로 취급해 빈 줄을 넣는다.
+  if (BLOCK_LEVEL_TAGS.test(tag)) {
+    text += "\n\n";
+  }
+
+  return text;
+}
+
+function paragraphsFromNodes(nodes) {
+  if (!nodes.length) {
+    return "";
+  }
+
+  const text = nodes
+    .map((node) => extractTextWithBreaks(node))
+    .join("");
+
+  return normalizePlainTextParagraphs(text);
+}
+
+// 붙여넣은 HTML을 문서 순서대로 훑어 텍스트와 표를 모두 보존한다.
+function collectHtmlBlocks(container, parts) {
+  let pendingTextNodes = [];
+
+  const flushText = () => {
+    const html = paragraphsFromNodes(pendingTextNodes);
+
+    if (html) {
+      parts.push(html);
+    }
+
+    pendingTextNodes = [];
+  };
+
+  [...container.childNodes].forEach((child) => {
+    if (child.nodeType === Node.ELEMENT_NODE && child.tagName.toUpperCase() === "TABLE") {
+      flushText();
+      const table = normalizeSingleTable(child);
+
+      if (table) {
+        parts.push(table);
       }
 
-      return `<table ${tableAttrs.join(" ")}>${normalizedRows}</table>`;
-    })
-    .filter(Boolean);
+      return;
+    }
 
+    // 표를 품고 있는 컨테이너는 순서를 지키기 위해 안으로 들어가 처리한다.
+    if (
+      child.nodeType === Node.ELEMENT_NODE &&
+      typeof child.querySelector === "function" &&
+      child.querySelector("table")
+    ) {
+      flushText();
+      collectHtmlBlocks(child, parts);
+      return;
+    }
+
+    pendingTextNodes.push(child);
+  });
+
+  flushText();
+}
+
+function normalizeHtmlContent(rawHtml) {
+  const measurementRoot = createMeasurementRoot(rawHtml);
+  const parts = [];
+
+  collectHtmlBlocks(measurementRoot, parts);
   measurementRoot.remove();
 
-  return tables.join("<p><br /></p>");
+  return parts.filter(Boolean).join("");
 }
 
 function normalizePlainTextTable(rawText) {
@@ -322,9 +411,32 @@ function normalizePlainTextParagraphs(rawText) {
 }
 
 function normalizePlainText(rawText) {
-  return rawText.includes("\t")
-    ? normalizePlainTextTable(rawText)
-    : normalizePlainTextParagraphs(rawText);
+  const lines = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const segments = [];
+  let current = null;
+
+  // 탭이 있는 줄(표)과 없는 줄(텍스트)을 연속 구간으로 묶어 둘 다 살린다.
+  lines.forEach((line) => {
+    const kind = line.includes("\t") ? "table" : "text";
+
+    if (!current || current.kind !== kind) {
+      current = { kind, lines: [] };
+      segments.push(current);
+    }
+
+    current.lines.push(line);
+  });
+
+  return segments
+    .map((segment) => {
+      const chunk = segment.lines.join("\n");
+
+      return segment.kind === "table"
+        ? normalizePlainTextTable(chunk)
+        : normalizePlainTextParagraphs(chunk);
+    })
+    .filter(Boolean)
+    .join("");
 }
 
 function resetPasteZoneIfPlaceholder() {
@@ -366,7 +478,7 @@ function buildDocumentFromPasteBlocks() {
     return pasteBlocks
       .map((block) => {
         if (block.kind === "html") {
-          return normalizeHtmlTable(block.html);
+          return normalizeHtmlContent(block.html);
         }
 
         return normalizePlainText(block.text);
@@ -379,7 +491,7 @@ function buildDocumentFromPasteBlocks() {
   const liveText = pasteZone.innerText;
 
   if (liveHtml.includes("<table")) {
-    return normalizeHtmlTable(liveHtml);
+    return normalizeHtmlContent(liveHtml);
   }
 
   return normalizePlainText(liveText);
@@ -985,7 +1097,7 @@ convertButton.addEventListener("click", () => {
   const tableHtml = readPastedTable();
 
   if (!tableHtml) {
-    resetOutput("붙여넣은 내용에서 표 데이터를 찾지 못했습니다.");
+    resetOutput("붙여넣은 내용에서 표나 텍스트를 찾지 못했습니다.");
     statusNode.style.color = "#a11d1d";
     return;
   }
